@@ -18,11 +18,19 @@ impl UdpServer {
         let socket_clone = self.socket.clone();
         let (tx, rx) = mpsc::channel();
         let tx = Arc::new(Mutex::new(tx));
-        let rx: Arc<Mutex<mpsc::Receiver<(String, SocketAddr)>>> = Arc::new(Mutex::new(rx));
+        let rx = Arc::new(Mutex::new(rx));
 
-        // 生产者线程：监听UDP消息并发送到通道
+        // 启动生产者线程
+        self.start_producer(socket_clone.clone(), tx.clone());
+
+        // 启动消费者线程
+        self.start_consumer(socket_clone, rx.clone());
+    }
+
+    // 生产者线程：监听UDP消息并发送到通道
+    fn start_producer(&self, socket: Arc<UdpSocket>, tx: Arc<Mutex<mpsc::Sender<(String, SocketAddr)>>>) {
         thread::spawn({
-            let socket = socket_clone.clone();
+            let socket = socket.clone();
             let tx = tx.clone();
             move || {
                 let mut buf = [0; 1024];
@@ -42,10 +50,12 @@ impl UdpServer {
                 }
             }
         });
+    }
 
-        // 消费者线程：从通道接收消息并通过UDP发送回客户端
+    // 消费者线程：从通道接收消息并通过UDP发送回客户端
+    fn start_consumer(&self, socket: Arc<UdpSocket>, rx: Arc<Mutex<mpsc::Receiver<(String, SocketAddr)>>>) {
         thread::spawn({
-            let socket = socket_clone;
+            let socket = socket.clone();
             let rx = rx.clone();
             move || {
                 loop {
@@ -67,7 +77,6 @@ impl UdpServer {
         });
     }
 }
-
 fn main() {
     let udp_server = UdpServer::new("0.0.0.0:12345").expect("Could not start server");
     println!("udp server is running on 0.0.0.0:12345");
