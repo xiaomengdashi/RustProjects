@@ -1,5 +1,5 @@
 use std::net::{SocketAddr, UdpSocket};
-use std::sync::{mpsc, Arc, Mutex};
+use std::sync::{mpsc::{self, Sender, Receiver}, Arc};
 use std::thread;
 
 pub struct UdpServer {
@@ -17,18 +17,16 @@ impl UdpServer {
     pub fn run(self) {
         let socket_clone = self.socket.clone();
         let (tx, rx) = mpsc::channel();
-        let tx = Arc::new(Mutex::new(tx));
-        let rx = Arc::new(Mutex::new(rx));
 
         // 启动生产者线程
-        self.start_producer(socket_clone.clone(), tx.clone());
+        self.start_producer(socket_clone.clone(), tx);
 
         // 启动消费者线程
-        self.start_consumer(socket_clone, rx.clone());
+        self.start_consumer(socket_clone.clone(), rx);
     }
 
     // 生产者线程：监听UDP消息并发送到通道
-    fn start_producer(&self, socket: Arc<UdpSocket>, tx: Arc<Mutex<mpsc::Sender<(String, SocketAddr)>>>) {
+    fn start_producer(&self, socket: Arc<UdpSocket>, tx: Sender<(String, SocketAddr)>) {
         thread::spawn({
             let socket = socket.clone();
             let tx = tx.clone();
@@ -38,8 +36,7 @@ impl UdpServer {
                     match socket.recv_from(&mut buf) {
                         Ok((size, src_addr)) => {
                             let message = String::from_utf8_lossy(&buf[..size]).to_string();
-                            let sender = tx.lock().unwrap();
-                            if let Err(e) = sender.send((message, src_addr)) {
+                            if let Err(e) = tx.send((message, src_addr)) {
                                 eprintln!("Failed to send message to channel: {}", e);
                             }
                         }
@@ -53,14 +50,12 @@ impl UdpServer {
     }
 
     // 消费者线程：从通道接收消息并通过UDP发送回客户端
-    fn start_consumer(&self, socket: Arc<UdpSocket>, rx: Arc<Mutex<mpsc::Receiver<(String, SocketAddr)>>>) {
+    fn start_consumer(&self, socket: Arc<UdpSocket>, rx: Receiver<(String, SocketAddr)>) {
         thread::spawn({
             let socket = socket.clone();
-            let rx = rx.clone();
             move || {
                 loop {
-                    let receiver = rx.lock().unwrap();
-                    match receiver.recv() {
+                    match rx.recv() {
                         Ok((message, src_addr)) => {
                             println!("Received and sending back: {}", message);
                             if let Err(e) = socket.send_to(message.as_bytes(), src_addr) {
