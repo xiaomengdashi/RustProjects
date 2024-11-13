@@ -1,6 +1,7 @@
 use std::net::{SocketAddr, UdpSocket};
 use std::sync::{mpsc::{self, Sender, Receiver}, Arc};
 use std::thread;
+use actix_web::{web, App, HttpServer, Responder};
 
 pub struct UdpServer {
     socket: Arc<UdpSocket>,
@@ -72,11 +73,27 @@ impl UdpServer {
         });
     }
 }
-fn main() {
-    let udp_server = UdpServer::new("0.0.0.0:12345").expect("Could not start server");
-    println!("udp server is running on 0.0.0.0:12345");
+
+async fn index() -> impl Responder {
+    "Hello, world from actix-web!"
+}
+
+#[actix_web::main]
+async fn main() -> std::io::Result<()> {
+    env_logger::init();
+
+    // Start UDP server
+    let udp_server = UdpServer::new("0.0.0.0:12345").expect("Could not start UDP server");
+    println!("UDP server is running on 0.0.0.0:12345");
     udp_server.run();
-    
-    // 保持主线程运行，以便服务器线程继续运行
-    std::thread::park();
+
+    // Start actix-web server
+    println!("Starting actix-web server on http://127.0.0.1:8080");
+    HttpServer::new(|| {
+        App::new()
+            .route("/", web::get().to(index))
+    })
+    .bind("127.0.0.1:8080")?
+    .run()
+    .await
 }
