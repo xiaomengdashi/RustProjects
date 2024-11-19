@@ -2,6 +2,7 @@ use futures_util::{StreamExt, SinkExt};
 use tokio::net::TcpListener;
 use tokio_tungstenite::tungstenite::Message;
 use tokio_tungstenite::accept_async;
+use tokio::sync::broadcast;
 
 
 #[tokio::main]
@@ -9,10 +10,15 @@ async fn main() {
     
     let addr = "127.0.0.1:8080";
     let listener = TcpListener::bind(&addr).await.expect("Failed to bind");
+
+    let (tx, rx) = broadcast::channel::<String>(10); 
     
     println!("WebSocket server running at {}", addr);
 
     while let Ok((stream, _)) = listener.accept().await {
+
+        let tx = tx.clone();   
+        let mut rx = rx.resubscribe();
         
         tokio::spawn(async move {
             let ws_stream = accept_async(stream)
@@ -21,20 +27,20 @@ async fn main() {
 
             let (mut write,mut read) = ws_stream.split();
 
-            while let Some(message) = read.next().await {
-                match message {
-                    Ok(Message::Text(text)) => {
-                        println!("Received: {}", text);
-                        write.send(Message::Text(format!(" {}",text))).await.unwrap();
+            loop {
+                tokio::select! {
+                    received_message = rx.recv() => {
+                        if let Ok(received_message) = received_message {
+                            write.send(Message::Text(received_message)).await.unwrap();
+                        }
                     }
-                    Ok(_) => {
-                        println!("Received a non-text message");
-                    }
-                    Err(e) => {
-                        println!("Error: {}", e);
+                    read_message = read.next() => {
+                        if let Some(Ok(Message::Text(text))) = read_message {
+                            tx.send(text).unwrap();
+                        }
                     }
                 }
-            };
+            }
         });
     }
 }
