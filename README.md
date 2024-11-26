@@ -4,3 +4,4 @@
 | :---        |    :----:   | :----:|
 | rust-react-chat|    基于react的聊天室|✅
 | udp-demo|          基于udp的聊天室|✅
+| auth-web|          web登录注册系统|✅

@@ -1,5 +1,6 @@
 [workspace]
 members = [
     "udp_demo",
-    "rust-react-chat",
+    "rust-react-chat", 
+    "auth-web", 
 ]
