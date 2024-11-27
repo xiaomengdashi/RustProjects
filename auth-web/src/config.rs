@@ -1,6 +1,4 @@
-use std::result;
-
-use jsonwebtoken::{decode, DecodingKey, EncodingKey, Header, Validation, Algorithm};
+use jsonwebtoken::{DecodingKey, EncodingKey, Header, Validation, Algorithm};
 use chrono::{Duration, Utc};
 use serde::{Serialize, Deserialize};
 

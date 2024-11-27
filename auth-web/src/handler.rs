@@ -1,10 +1,11 @@
 use std::sync::{Arc, Mutex};
 
 
-use actix_web::{body, web, App, HttpResponse, HttpServer, Responder};
+use actix_web::{web, HttpResponse, Responder};
+use serde_json::json;
 
 use crate::config::TokenClaims;
-use crate::models::{Database, RegisterRequest, LoginRequest, LoginResponse};
+use crate::models::{Database, RegisterRequest, LoginRequest};
 
 
 pub async fn index() -> impl Responder {
@@ -14,13 +15,12 @@ pub async fn index() -> impl Responder {
 
 pub async fn register(db: web::Data<Arc<Mutex<Database>>>, body: web::Json<RegisterRequest>) -> impl Responder {
     let mut db = db.lock().unwrap();
-    println!("{}", body.username.clone());
     if db.has_user(body.username.clone()).await {
-        return HttpResponse::BadRequest().body("User already exists");
+        return HttpResponse::Conflict().body(format!("user already exists: {:?}", body.username));
     };
 
     let user = db.create_user(body.username.clone(), body.password.clone()).await;
-    return HttpResponse::Ok().body(format!("User created: {:?}", user));
+    return HttpResponse::Ok().body(format!("user created: {:?}", user.username));
 }
 
 pub async fn login(
@@ -30,10 +30,16 @@ pub async fn login(
     let db = db.lock().unwrap();
     if let Some(user) = db.get_user(body.username.clone()).await {
         if user.verify_password(&body.password) {
-            let token = TokenClaims::generate_jwt_token(user.id.clone());
-            return HttpResponse::Ok().body(format!("Token: {:?}", token));
+            match TokenClaims::generate_jwt_token(user.id.clone()) {
+                Ok(token) => return HttpResponse::Ok().json(json!({ "token": token })),
+                Err(_) => return HttpResponse::InternalServerError().body("Error generating token"),
+            };
         }
     }
 
     return HttpResponse::Unauthorized().body("Invalid username or password");
+}
+
+pub async fn logout() -> impl Responder {
+    HttpResponse::Ok().body("Logged out")
 }

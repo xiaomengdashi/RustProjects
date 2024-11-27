@@ -19,19 +19,20 @@ async fn main() -> std::io::Result<()> {
     HttpServer::new(move || {
         App::new()
         .app_data(web::Data::new(shared_state.clone()))
-          .service(
-                web::scope("/api")
-                .service(
-                       web::scope("/auth")
-                      .service(
-                           web::resource("/login").route(web::post().to(handler::login))
-                       )
-                      .service(
-                           web::resource("/register").route(web::post().to(handler::register))
-                       )
-                 )
-                .service(web::resource("/index").wrap(HttpAuthentication::bearer(auth::validator)).route(web::get().to(handler::index)))
-         )
+        .service(
+            web::scope("/api")
+            .service(
+                web::scope("/auth")
+                .service(web::resource("/login").route(web::post().to(handler::login)))
+                .service(web::resource("/register").route(web::post().to(handler::register)))
+            )
+            .service(
+                web::scope("")
+                .wrap(HttpAuthentication::bearer(auth::validator))
+                .service(web::resource("/index").route(web::get().to(handler::index)))
+                .service(web::resource("/logout").route(web::get().to(handler::logout)))
+            )
+        )
     })
     .bind("127.0.0.1:8080")?
     .run()
