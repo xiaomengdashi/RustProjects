@@ -72,37 +72,47 @@ export default {
     ElCard,
   },
   setup() {
-    const socket = ref(null);
-    const message = ref("");
-    const messages = ref([]);
+    const socket = ref(null);  // WebSocket实例
+    const message = ref("");   // 用户输入的消息
+    const messages = ref([]);  // 存储消息的数组
 
+    // 连接WebSocket并处理消息
     const connectWebSocket = () => {
       socket.value = new WebSocket("ws://localhost:8080/ws");
-      
+
       socket.value.onopen = () => {
         console.log("WebSocket connected!");
       };
-      
+
+      // 接收消息时的处理逻辑
       socket.value.onmessage = (event) => {
-        messages.value.push(event.data);
+        // 假设服务器返回的是纯文本消息，或者是一个JSON对象
+        const data = event.data;
+        console.log("Received message:", data);
+
+        // 将接收到的消息添加到messages数组
+        messages.value.push(data);
       };
-      
+
       socket.value.onclose = () => {
         console.log("WebSocket closed");
       };
-      
+
       socket.value.onerror = (error) => {
         console.error("WebSocket Error: ", error);
       };
     };
 
+    // 发送消息到服务器
     const sendMessage = () => {
       if (message.value.trim() !== "" && socket.value) {
         socket.value.send(message.value);
-        message.value = ""; // Clear input after sending
+        messages.value.push(`You: ${message.value}`); // 本地显示自己的消息
+        message.value = "";  // 清空输入框
       }
     };
 
+    // 初始连接WebSocket
     connectWebSocket();
 
     return {
