@@ -3,4 +3,5 @@ members = [
     "udp_demo",
     "rust-react-chat", 
     "auth-web", 
+    "vue3-websocket",
 ]
