@@ -2,7 +2,7 @@ use std::sync::{Arc, Mutex};
 
 
 use actix_web::{web, HttpResponse, Responder};
-use serde_json::json;
+use actix_web::cookie:: CookieBuilder;
 
 use crate::config::TokenClaims;
 use crate::models::{Database, RegisterRequest, LoginRequest};
@@ -31,7 +31,14 @@ pub async fn login(
     if let Some(user) = db.get_user(body.username.clone()).await {
         if user.verify_password(&body.password) {
             match TokenClaims::generate_jwt_token(user.id.clone()) {
-                Ok(token) => return HttpResponse::Ok().json(json!({ "token": token })),
+                Ok(token) => {
+                    let cookie = CookieBuilder::new("token", token)
+                    .path("/")
+                    .http_only(true)
+                    .finish();
+                
+                    return HttpResponse::Ok().cookie(cookie).body("Logged in successfully");
+                },
                 Err(_) => return HttpResponse::InternalServerError().body("Error generating token"),
             };
         }
