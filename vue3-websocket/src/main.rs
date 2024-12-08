@@ -1,61 +1,79 @@
-use tokio_tungstenite::tungstenite::protocol::Message;
-use tokio_tungstenite::accept_async;
-use futures_util::{StreamExt, SinkExt};
-use tokio::net::TcpListener;
-use std::sync::{Arc, Mutex};
-use std::net::SocketAddr;
-use tokio::sync::broadcast;
+use std::{
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc,
+    },
+    time::Instant,
+};
 
-#[tokio::main]
-async fn main() {
-    let addr: SocketAddr = "127.0.0.1:8080".parse().unwrap();
-    let listener = TcpListener::bind(&addr).await.unwrap();
-    println!("WebSocket server running on {}", addr);
+use actix::*;
+use actix_files::{Files, NamedFile};
+use actix_web::{
+    middleware::Logger, web, App, Error, HttpRequest, HttpResponse, HttpServer, Responder,
+};
+use actix_web_actors::ws;
 
-    // 创建广播通道
-    let (tx, _rx) = broadcast::channel::<String>(100); // 最多支持100条消息
-    let tx = Arc::new(Mutex::new(tx));
+mod server;
+mod session;
 
-    while let Ok((stream, _)) = listener.accept().await {
-        let tx = Arc::clone(&tx);
-        tokio::spawn(handle_connection(stream, tx));
-    }
+async fn index() -> impl Responder {
+    NamedFile::open_async("./static/index.html").await.unwrap()
 }
 
-async fn handle_connection(stream: tokio::net::TcpStream, tx: Arc<Mutex<broadcast::Sender<String>>>) {
-    let ws_stream = accept_async(stream)
-        .await
-        .expect("Error during WebSocket handshake");
-
-    println!("New WebSocket connection");
-
-    let (mut write, mut read) = ws_stream.split();
-
-    // 每个连接都会从广播通道中接收消息
-    let mut rx = tx.lock().unwrap().subscribe();
-
-    // 启动一个任务来处理广播
-    tokio::spawn(async move {
-        while let Ok(message) = rx.recv().await {
-            // 将收到的消息广播给客户端
-            write.send(Message::Text(message)).await.unwrap();
-        }
-    });
-
-    // 处理接收到的消息并广播
-    while let Some(message) = read.next().await {
-        match message {
-            Ok(msg) => {
-                if let Message::Text(text) = msg {
-                    println!("Received: {}", text);
-                    // 广播收到的消息
-                    tx.lock().unwrap().send(text).unwrap();
-                }
-            }
-            Err(e) => {
-                println!("Error while processing message: {:?}", e);
-                break;
-            }
-        }
-    }
+/// Entry point for our websocket route
+async fn chat_route(
+    req: HttpRequest,
+    stream: web::Payload,
+    srv: web::Data<Addr<server::ChatServer>>,
+) -> Result<HttpResponse, Error> {
+    ws::start(
+        session::WsChatSession {
+            id: 0,
+            hb: Instant::now(),
+            room: "main".to_owned(),
+            name: None,
+            addr: srv.get_ref().clone(),
+        },
+        &req,
+        stream,
+    )
 }
+
+/// Displays state
+async fn get_count(count: web::Data<AtomicUsize>) -> impl Responder {
+    let current_count = count.load(Ordering::SeqCst);
+    format!("Visitors: {current_count}")
+}
+
+// the actor-based WebSocket examples REQUIRE `actix_web::main` for actor support
+#[actix_web::main]
+async fn main() -> std::io::Result<()> {
+    env_logger::init_from_env(env_logger::Env::new().default_filter_or("info"));
+
+    // set up applications state
+    // keep a count of the number of visitors
+    let app_state = Arc::new(AtomicUsize::new(0));
+
+    // start chat server actor
+    let server = server::ChatServer::new(app_state.clone()).start();
+    
+    log::info!("starting HTTP server at http://localhost:8080");
+
+    HttpServer::new(move || {
+        App::new()
+            .app_data(web::Data::from(app_state.clone()))
+            .app_data(web::Data::new(server.clone()))
+            .service(web::resource("/").to(index))
+            .route("/count", web::get().to(get_count))
+            .route("/ws", web::get().to(chat_route))
+            .service(Files::new("/static", "./static"))
+            .wrap(Logger::default())
+    })
+    .workers(2)
+    .bind(("127.0.0.1", 8080))?
+    .run()
+    .await
+}
+
+// 增加一个udp线程
+

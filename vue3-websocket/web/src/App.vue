@@ -1,182 +1,195 @@
 <template>
-  <el-container style="height: 100vh; background-color: #f5f5f5;">
-    <!-- Header -->
-    <el-header style="background-color: #409eff; color: white;">
-      <h1 style="text-align: center; margin: 0; font-size: 24px; font-weight: bold;">Real-time Chat</h1>
-    </el-header>
-
-    <!-- Main Content -->
-    <el-main style="padding: 20px;">
-      <!-- Input and Send Button -->
-      <el-row gutter="20" type="flex" justify="center">
-        <el-col :span="16">
-          <el-input
-            v-model="message"
-            placeholder="Enter your message"
-            clearable
-            @keyup.enter="sendMessage"
-            style="border-radius: 25px; padding: 10px; background-color: #fff; box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);"
-          />
-        </el-col>
-        <el-col :span="6">
-          <el-button
-            type="primary"
-            @click="sendMessage"
-            style="width: 100%; border-radius: 25px; height: 100%; font-size: 16px;"
-          >
-            Send
-          </el-button>
-        </el-col>
-      </el-row>
-
-      <!-- Divider -->
-      <el-divider></el-divider>
-
-      <!-- Messages Display -->
-      <el-row gutter="20" type="flex" justify="center" style="max-height: 60vh; overflow-y: auto;">
-        <el-col :span="16">
-          <div v-for="(msg, index) in messages" :key="index" class="message-item">
-            <el-card
-              shadow="always"
-              style="margin-bottom: 10px; border-radius: 15px; background-color: #ffffff; padding: 15px; font-size: 14px;"
-            >
-              <div>{{ msg }}</div>
-            </el-card>
-          </div>
-        </el-col>
-      </el-row>
-    </el-main>
-
-    <!-- Footer -->
-    <el-footer style="background-color: #409eff; color: white; padding: 10px 0; text-align: center;">
-      <p style="margin: 0; font-size: 14px;">Chat App using WebSocket & Vue 3</p>
-    </el-footer>
-  </el-container>
+  <div>
+    <button @click="toggleConnect">
+      {{ isConnected? 'Disconnect' : 'Connect' }}
+    </button>
+    <span>Status:</span>
+    <span :class="statusClass">{{ statusText }}</span>
+    <div id="log" class="log" ref="logRef" v-html="log"></div> <!-- 使用 v-html 绑定 log.value -->
+    <form @submit.prevent="sendMessage" id="chatform">
+      <input type="text" id="text" v-model="message" autocomplete="off" />
+      <input type="submit" id="send" />
+      <button @click="clearLog">Clear Log</button> <!-- 添加清除日志按钮 -->
+    </form>
+  </div>
 </template>
 
 <script>
-import { ref } from "vue";
-import { ElContainer, ElHeader, ElMain, ElFooter, ElInput, ElButton, ElRow, ElCol, ElDivider, ElCard } from "element-plus";
+import { ref, onMounted, onUnmounted, nextTick } from 'vue';
 
 export default {
-  components: {
-    ElContainer,
-    ElHeader,
-    ElMain,
-    ElFooter,
-    ElInput,
-    ElButton,
-    ElRow,
-    ElCol,
-    ElDivider,
-    ElCard,
-  },
   setup() {
-    const socket = ref(null);  // WebSocket实例
-    const message = ref("");   // 用户输入的消息
-    const messages = ref([]);  // 存储消息的数组
+    const isConnected = ref(false);
+    const statusText = ref('disconnected');
+    const statusClass = ref('disconnected');
+    const message = ref('');
+    const log = ref('');
+    const logRef = ref(null); // 添加一个 ref 来引用 log 元素
 
-    // 连接WebSocket并处理消息
-    const connectWebSocket = () => {
-      socket.value = new WebSocket("ws://localhost:8080/ws");
+    const socket = ref(null);
+
+    const connect = () => {
+      disconnect();
+
+      const { location } = window;
+      const proto = location.protocol.startsWith('https')? 'wss' : 'ws';
+      const wsUri = `${proto}://127.0.0.1:8080/ws`;
+
+      logMethod('Sending:'+ 'Connecting...')
+      socket.value = new WebSocket(wsUri);
 
       socket.value.onopen = () => {
-        console.log("WebSocket connected!");
+        logMethod('Sending:'+ 'Connected')
+        updateConnectionStatus();
       };
 
-      // 接收消息时的处理逻辑
-      socket.value.onmessage = (event) => {
-        // 假设服务器返回的是纯文本消息，或者是一个JSON对象
-        const data = event.data;
-        console.log("Received message:", data);
-
-        // 将接收到的消息添加到messages数组
-        messages.value.push(data);
+      socket.value.onmessage = ev => {
+        logMethod('Received: ' + ev.data, 'message')
       };
 
       socket.value.onclose = () => {
-        console.log("WebSocket closed");
-      };
-
-      socket.value.onerror = (error) => {
-        console.error("WebSocket Error: ", error);
+        logMethod('Sending: ' + 'Disconnected')
+        socket.value = null;
+        updateConnectionStatus();
       };
     };
 
-    // 发送消息到服务器
-    const sendMessage = () => {
-      if (message.value.trim() !== "" && socket.value) {
-        socket.value.send(message.value);
-        messages.value.push(`You: ${message.value}`); // 本地显示自己的消息
-        message.value = "";  // 清空输入框
+    const disconnect = () => {
+      if (socket.value) {
+        logMethod('Sending:'+ 'Disconnecting...')
+        socket.value.close();
+        socket.value = null;
+        updateConnectionStatus();
       }
     };
 
-    // 初始连接WebSocket
-    connectWebSocket();
+    const updateConnectionStatus = () => {
+      if (socket.value) {
+        statusText.value = 'connected';
+        statusClass.value = 'connected';
+        isConnected.value = true;
+      } else {
+        statusText.value = 'disconnected';
+        statusClass.value = 'disconnected';
+        isConnected.value = false;
+      }
+    };
+
+    const sendMessage = () => {
+      // if (message.value.trim()!== '') {
+        log.value += `<p class="msg msg--message">Sending: ${message.value}</p>`;
+        socket.value.send(message.value);
+        message.value = '';
+        scrollToBottom();
+      // }
+    };
+
+    const toggleConnect = () => {
+      if (isConnected.value) {
+        disconnect();
+      } else {
+        connect();
+      }
+    };
+
+    const scrollToBottom = () => {
+      if (logRef.value) {
+        logRef.value.scrollTop = logRef.value.scrollHeight;
+      }
+    };
+
+
+    const logMethod = (msg, type = 'status') => {
+      log.value += `<p class="msg msg--${type}">${msg}</p>`;
+      nextTick(() => {
+        scrollToBottom();
+      });
+    };
+
+    const clearLog = () => {
+      log.value = '';
+      scrollToBottom();
+    };
+
+    onMounted(() => {
+      updateConnectionStatus();
+    });
+
+    onUnmounted(() => {
+      disconnect();
+    });
 
     return {
+      isConnected,
+      statusText,
+      statusClass,
       message,
-      messages,
+      log,
+      logRef,
+      connect,
+      disconnect,
       sendMessage,
+      toggleConnect, // 添加 toggleConnect 方法
+      logMethod, // 添加 logMethod 方法
+      clearLog, // 添加 clearLog 方法
     };
   },
 };
 </script>
 
-<style scoped>
-/* Global styles */
-.el-input, .el-button {
-  transition: all 0.3s ease;
+<style>
+:root {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+  font-size: 18px;
 }
 
-.el-input:focus, .el-button:hover {
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+input[type='text'] {
+  font-size: inherit;
 }
 
-/* Message display styling */
-.message-item {
-  display: flex;
-  justify-content: center;
-  margin-bottom: 10px;
+#log {
+  width: 30em;
+  height: 20em;
+  overflow: auto;
+  margin: 0.5em 0;
+  border: 1px solid black;
 }
 
-.el-card {
-  border-radius: 15px;
-  background-color: #ffffff;
-  padding: 15px;
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+#status {
+  padding: 0 0.2em;
 }
 
-/* Header and Footer styles */
-.el-header {
-  background-color: #409eff;
-  color: white;
-  padding: 10px 0;
+#text {
+  width: 17em;
+  padding: 0.5em;
 }
 
-.el-footer {
-  background-color: #409eff;
-  color: white;
-  text-align: center;
-  padding: 10px;
-}
-
-.el-footer p {
+.msg {
   margin: 0;
-  font-size: 14px;
+  padding: 0.25em 0.5em;
 }
 
-/* Input and Button Styles */
-.el-input {
-  border-radius: 25px;
-  padding: 10px;
-  background-color: #fff;
+.msg--status {
+  /* a light yellow */
+  background-color: #ffffc9;
 }
 
-.el-button {
-  border-radius: 25px;
-  height: 100%;
-  font-size: 16px;
+.msg--message {
+  /* a light blue */
+  background-color: #d2f4ff;
+}
+
+.msg--error {
+  background-color: pink;
+}
+
+.connected {
+  background-color: transparent;
+  color: green;
+}
+
+.disconnected {
+  background-color: red;
+  color: white;
 }
 </style>
