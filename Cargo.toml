@@ -5,4 +5,5 @@ members = [
     "auth-web", 
     "vue3-websocket", 
     "http-udp-web",
+    "websocket",
 ]
