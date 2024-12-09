@@ -84,7 +84,7 @@ async fn broadcast_periodic_data(clients: web::Data<ClientMap>) {
 
         let message = format!("服务器定时消息 #{}: 当前时间 {:?}", 
             counter, 
-            chrono::Local::now().format("%Y-%m-%d %H:%M:%S")
+            chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string()
         );
 
         let mut disconnected_clients = Vec::new();
