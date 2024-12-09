@@ -1,32 +1,29 @@
 <template>
   <div class="chat-container">
-    <el-card class="chat-card">
-      <template #header>
-        <div class="card-header">
-          <span>WebSocket 聊天室</span>
-          <div class="header-controls">
-            <el-button size="small" type="warning" @click="clearMessages" :disabled="messages.length === 0">
-              清空日志
-            </el-button>
-            <el-tag :type="connectionStatus === 'connected' ? 'success' : 'danger'">
-              {{ connectionStatus === 'connected' ? '已连接' : '未连接' }}
-            </el-tag>
-          </div>
-        </div>
-      </template>
+    <div class="card-header">
+      <span>WebSocket 聊天室</span>
+      <div class="header-controls">
+        <el-button size="small" type="warning" @click="clearMessages" :disabled="messages.length === 0">
+          清空日志
+        </el-button>
+        <el-tag :type="connectionStatus === 'connected' ? 'success' : 'danger'">
+          {{ connectionStatus === 'connected' ? '已连接' : '未连接' }}
+        </el-tag>
+      </div>
+    </div>
 
-      <div class="chat-messages" ref="messageContainer">
-        <div v-for="(msg, index) in messages" :key="index" class="message-wrapper"
-          :class="{ 'message-sent': msg.type === 'sent' }">
-          <el-tag size="small" class="message-type">
-            {{ msg.type === 'received' ? '收到' : '发送' }}
-          </el-tag>
-          <div class="message-bubble">
-            <span class="message-content">{{ msg.content }}</span>
-          </div>
+    <div class="chat-messages" ref="messageContainer">
+      <div v-for="(msg, index) in messages" :key="index" class="message-wrapper"
+        :class="{ 'message-sent': msg.type === 'sent' }">
+        <el-tag size="small" class="message-type">
+          {{ msg.type === 'received' ? '收到' : '发送' }}
+        </el-tag>
+        <div class="message-bubble">
+          <span class="message-content">{{ msg.content }}</span>
         </div>
       </div>
-    </el-card>
+    </div>
+
     <div class="input-area">
       <el-input v-model="inputMessage" placeholder="请输入消息" :disabled="connectionStatus !== 'connected'"
         @keyup.enter="sendMessage">
@@ -123,12 +120,6 @@ onUnmounted(() => {
   margin: 20px auto;
 }
 
-.chat-card {
-  height: 600px;
-  display: flex;
-  flex-direction: column;
-}
-
 .card-header {
   display: flex;
   justify-content: space-between;
@@ -136,12 +127,13 @@ onUnmounted(() => {
 }
 
 .chat-messages {
-  flex: 1;
+  width: 100%;
+  max-height: 700px;
   overflow-y: auto;
-  padding: 15px 0;
-  margin-bottom: 10px;
-  height: calc(100% - 140px);
-  background-color: #f7f7f7;
+  margin-top: 10px;
+  border: 1px solid #ddd;
+  padding: 10px;
+  border-radius: 4px;
 }
 
 .message-wrapper {
@@ -178,19 +170,12 @@ onUnmounted(() => {
 }
 
 .input-area {
-  padding: 10px 0;
+  padding: 10px 1px;
 }
 
 .header-controls {
   display: flex;
   gap: 10px;
   align-items: center;
-}
-
-.chat-card {
-  height: 600px;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
 }
 </style>
