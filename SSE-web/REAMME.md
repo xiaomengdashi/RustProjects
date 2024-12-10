@@ -11,6 +11,7 @@
 
 ### 这个实现使用了：
 - broadcast 通道来实现消息广播
+- broadcast 通道的工作原理是，只有当有接收者（订阅者）存在时，消息才会被成功发送。如果没有接收者，send 方法会返回一个错误。
 - BroadcastStream 来将接收器转换为流
 - parking_lot::RwLock 提供更好的并发性能
 - Actix-web 的异步处理能力
