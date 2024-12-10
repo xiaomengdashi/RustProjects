@@ -6,4 +6,5 @@ members = [
     "vue3-websocket", 
     "http-udp-web",
     "websocket",
+    "SSE-web",
 ]
