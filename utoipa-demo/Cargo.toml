@@ -8,3 +8,7 @@ actix-web = "4.4"
 serde = { version = "1.0", features = ["derive"] }
 utoipa = { version = "4.1", features = ["actix_extras"] }
 utoipa-swagger-ui = { version = "5.0", features = ["actix-web"] }
+jsonwebtoken = "9.2"
+chrono = "0.4.39"
+serde_json = "1.0.133"
+actix-web-httpauth = "0.8.2"

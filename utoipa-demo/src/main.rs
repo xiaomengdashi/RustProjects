@@ -1,9 +1,34 @@
-use actix_web::{get, post, web, App, HttpResponse, HttpServer, Responder};
+use actix_web::{get, post, web, App, HttpResponse, HttpServer, Responder, Error, dev::ServiceRequest};
 use serde::{Deserialize, Serialize};
 use std::sync::Mutex;
 use utoipa::OpenApi;
 use utoipa::ToSchema;
 use utoipa_swagger_ui::SwaggerUi;
+use jsonwebtoken::{encode, decode, Header, Algorithm, Validation, EncodingKey, DecodingKey};
+use actix_web_httpauth::extractors::bearer::{BearerAuth, Config};
+use actix_web_httpauth::extractors::AuthenticationError;
+use actix_web_httpauth::middleware::HttpAuthentication;
+
+// JWT密钥 - 在实际应用中应该从环境变量或配置文件中读取
+const JWT_SECRET: &[u8] = b"128743271948718749!@*QWQEJJF";
+
+// 添加认证相关的结构体
+#[derive(Debug, Serialize, Deserialize)]
+struct Claims {
+    sub: String,
+    exp: usize,
+}
+
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+struct LoginRequest {
+    username: String,
+    password: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+struct LoginResponse {
+    token: String,
+}
 
 // 添加应用状态来存储数据
 struct AppState {
@@ -15,6 +40,7 @@ struct AppState {
 #[derive(OpenApi)]
 #[openapi(
     paths(
+        login,
         get_users,
         get_user_by_id,
         create_user,
@@ -23,14 +49,103 @@ struct AppState {
         get_health
     ),
     components(
-        schemas(User, CreateUserRequest, UpdateUserRequest)
+        schemas(User, CreateUserRequest, UpdateUserRequest, LoginRequest, LoginResponse)
     ),
     tags(
+        (name = "auth", description = "Authentication endpoints"),
         (name = "users", description = "User management endpoints"),
         (name = "health", description = "Health check endpoints")
-    )
+    ),
+    modifiers(&SecurityAddon)
 )]
 struct ApiDoc;
+
+struct SecurityAddon;
+
+impl utoipa::Modify for SecurityAddon {
+    fn modify(&self, openapi: &mut utoipa::openapi::OpenApi) {
+        // 添加安全方案定义
+        let components = openapi.components.get_or_insert_with(Default::default);
+        components.add_security_scheme(
+            "bearer_auth",
+            utoipa::openapi::security::SecurityScheme::Http(
+                utoipa::openapi::security::HttpBuilder::new()
+                    .scheme(utoipa::openapi::security::HttpAuthScheme::Bearer)
+                    .bearer_format("JWT")
+                    .build(),
+            ),
+        );
+
+        // 为所有非登录路径添加安全要求
+        if let Some(paths) = openapi.paths.extensions.as_mut() {
+            for (path, item) in paths {
+                if !path.contains("/login") {
+                    if let Some(path_item) = item.as_object_mut() {
+                        for (_, operation) in path_item {
+                            if let Some(op) = operation.as_object_mut() {
+                                op.insert("security".to_string(), serde_json::json!([{
+                                    "bearer_auth": Vec::<String>::new()
+                                }]));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// 认证中间件处理函数
+async fn validator(req: ServiceRequest, credentials: BearerAuth) -> Result<ServiceRequest, (Error, ServiceRequest)> {
+    let config = req
+        .app_data::<Config>()
+        .map(|data| data.clone())
+        .unwrap_or_else(Default::default);
+    
+    let token = credentials.token();
+    let validation = Validation::new(Algorithm::HS256);
+    
+    match decode::<Claims>(
+        token,
+        &DecodingKey::from_secret(JWT_SECRET),
+        &validation,
+    ) {
+        Ok(_claims) => Ok(req),
+        Err(_) => Err((AuthenticationError::from(config).into(), req)),
+    }
+}
+
+/// Login to get JWT token
+#[utoipa::path(
+    post,
+    path = "/login",
+    request_body = LoginRequest,
+    responses(
+        (status = 200, description = "Login successful", body = LoginResponse),
+        (status = 401, description = "Invalid credentials")
+    ),
+    tag = "auth"
+)]
+#[post("/login")]
+async fn login(credentials: web::Json<LoginRequest>) -> impl Responder {
+    if credentials.username == "admin" && credentials.password == "password" {
+        let claims = Claims {
+            sub: credentials.username.clone(),
+            exp: (chrono::Utc::now() + chrono::Duration::hours(24)).timestamp() as usize,
+        };
+
+        match encode(
+            &Header::default(),
+            &claims,
+            &EncodingKey::from_secret(JWT_SECRET),
+        ) {
+            Ok(token) => HttpResponse::Ok().json(LoginResponse { token }),
+            Err(_) => HttpResponse::InternalServerError().json("Token generation failed"),
+        }
+    } else {
+        HttpResponse::Unauthorized().json("Invalid credentials")
+    }
+}
 
 // 数据模型
 #[derive(Serialize, Deserialize, ToSchema, Clone)]
@@ -56,9 +171,13 @@ struct UpdateUserRequest {
 /// Get list of users
 #[utoipa::path(
     get,
-    path = "/users",
+    path = "/api/users",
     responses(
-        (status = 200, description = "List of users", body = Vec<User>)
+        (status = 200, description = "List of users", body = Vec<User>),
+        (status = 401, description = "Unauthorized")
+    ),
+    security(
+        ("bearer_auth" = [])
     ),
     tag = "users"
 )]
@@ -71,13 +190,17 @@ async fn get_users(data: web::Data<AppState>) -> impl Responder {
 /// Get user by ID
 #[utoipa::path(
     get,
-    path = "/users/{id}",
+    path = "/api/users/{id}",
     responses(
         (status = 200, description = "User found", body = User),
-        (status = 404, description = "User not found")
+        (status = 404, description = "User not found"),
+        (status = 401, description = "Unauthorized")
     ),
     params(
         ("id" = u32, Path, description = "User ID")
+    ),
+    security(
+        ("bearer_auth" = [])
     ),
     tag = "users"
 )]
@@ -94,7 +217,7 @@ async fn get_user_by_id(id: web::Path<u32>, data: web::Data<AppState>) -> impl R
 /// Create new user
 #[utoipa::path(
     post,
-    path = "/users",
+    path = "/api/users",
     request_body = CreateUserRequest,
     responses(
         (status = 201, description = "User created successfully", body = User)
@@ -123,7 +246,7 @@ async fn create_user(
 /// Delete user
 #[utoipa::path(
     delete,
-    path = "/users/{id}",
+    path = "/api/users/{id}",
     responses(
         (status = 200, description = "User deleted successfully"),
         (status = 404, description = "User not found")
@@ -147,7 +270,7 @@ async fn delete_user(id: web::Path<u32>, data: web::Data<AppState>) -> impl Resp
 /// Update user
 #[utoipa::path(
     put,
-    path = "/users/{id}",
+    path = "/api/users/{id}",
     request_body = UpdateUserRequest,
     responses(
         (status = 200, description = "User updated successfully", body = User),
@@ -181,7 +304,7 @@ async fn update_user(
 /// Health check endpoint
 #[utoipa::path(
     get,
-    path = "/health",
+    path = "/api/health",
     responses(
         (status = 200, description = "Service is healthy")
     ),
@@ -196,7 +319,6 @@ async fn get_health() -> impl Responder {
 async fn main() -> std::io::Result<()> {
     let openapi = ApiDoc::openapi();
 
-    // 初始化应用状态
     let app_state = web::Data::new(AppState {
         users: Mutex::new(vec![
             User {
@@ -209,17 +331,28 @@ async fn main() -> std::io::Result<()> {
     });
 
     HttpServer::new(move || {
+        // 创建认证中间件
+        let auth = HttpAuthentication::bearer(validator);
+        
         App::new()
             .app_data(app_state.clone())
-            .service(get_users)
-            .service(get_user_by_id)
-            .service(create_user)
-            .service(delete_user)
-            .service(update_user)
-            .service(get_health)
+            // 登录接口不需要认证
+            .service(login)
+            // Swagger UI 路由放在认证中间件之外
             .service(
                 SwaggerUi::new("/swagger-ui/{_:.*}")
                     .url("/api-docs/openapi.json", openapi.clone()),
+            )
+            // API 路由使用认证中间件保护
+            .service(
+                web::scope("/api")
+                    .wrap(auth)
+                    .service(get_users)
+                    .service(get_user_by_id)
+                    .service(create_user)
+                    .service(delete_user)
+                    .service(update_user)
+                    .service(get_health)
             )
     })
     .bind("127.0.0.1:8080")?
