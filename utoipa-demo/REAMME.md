@@ -18,3 +18,21 @@
 浏览所有可用的 API 端点
 查看请求/响应模型
 直接在界面上测试 API
+
+src/
+├── main.rs              # 应用程序入口
+├── config.rs            # 配置相关
+├── models/
+│   ├── mod.rs          # models 模块入口
+│   └── user.rs         # 用户相关模型
+├── handlers/
+│   ├── mod.rs          # handlers 模块入口
+│   ├── auth.rs         # 认证相关处理器
+│   └── user.rs         # 用户相关处理器
+├── middleware/
+│   ├── mod.rs          # middleware 模块入口
+│   └── auth.rs         # 认证中间件
+├── api_docs/
+│   ├── mod.rs          # API文档模块入口
+│   └── openapi.rs      # OpenAPI文档定义
+└── state.rs            # 应用状态管理

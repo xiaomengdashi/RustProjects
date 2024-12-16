@@ -1,0 +1,1 @@
+pub const JWT_SECRET: &[u8] = b"128743271948718749!@*QWQEJJF"; 
