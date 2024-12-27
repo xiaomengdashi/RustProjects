@@ -8,3 +8,4 @@
 | websocket|        简单版本websocket网站|✅
 | vue3-websocket|     websocket网站|✅
 | SSE-web|     SSE网站 |✅
+| rust-lib|     Rust调用C静态库，包括Linux和windows |✅

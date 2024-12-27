@@ -1,4 +1,6 @@
 [workspace]
+resolver = "2"
+
 members = [
     "udp_demo",
     "rust-react-chat", 
@@ -6,5 +8,6 @@ members = [
     "vue3-websocket", 
     "http-udp-web",
     "websocket",
-    "SSE-web",
+    "SSE-web", 
+    "rust-c-lib"
 ]
